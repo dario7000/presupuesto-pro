@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { registerSW, syncQueue, getQueue } from '@/lib/offline'
 import type { Profile } from '@/lib/types'
 
 const NAV_ITEMS = [
@@ -17,6 +18,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isOffline, setIsOffline] = useState(false)
+  const [showSynced, setShowSynced] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -42,6 +45,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => subscription.unsubscribe()
   }, [router, pathname])
 
+  // PWA & offline
+  useEffect(() => {
+    registerSW()
+    const handleOffline = () => setIsOffline(true)
+    const handleOnline = async () => {
+      setIsOffline(false)
+      const queue = getQueue()
+      if (queue.length > 0) {
+        await syncQueue(supabase)
+        setShowSynced(true)
+        setTimeout(() => setShowSynced(false), 3000)
+      }
+    }
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+    if (!navigator.onLine) setIsOffline(true)
+    return () => {
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -62,6 +87,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col" style={{ maxWidth: 480, margin: '0 auto' }}>
+      {/* Offline banner */}
+      {isOffline && (
+        <div className="fixed top-0 left-0 right-0 z-[999] bg-amber-500 text-amber-900 text-center py-2 px-4 text-xs font-bold" style={{ fontFamily: 'var(--font-heading)', maxWidth: 480, margin: '0 auto' }}>
+          📡 Sin conexión — Los cambios se guardarán al reconectar
+        </div>
+      )}
+      {showSynced && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg toast" style={{ fontFamily: 'var(--font-heading)' }}>
+          ✅ Datos sincronizados
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-brand-gradient text-white px-5 py-4 flex items-center justify-between sticky top-0 z-50" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
         <div className="flex items-center gap-2.5">

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatARS } from '@/lib/types'
+import { generateQuotePDF } from '@/lib/pdf-generator'
 import type { Client, SavedItem, Profile } from '@/lib/types'
 
 interface QuoteItemForm {
@@ -97,7 +98,7 @@ export default function NuevoPresupuestoPage() {
     setShowClientList(false)
   }
 
-  const handleSave = async (sendWhatsApp: boolean) => {
+  const handleSave = async (sendWhatsApp: boolean, downloadPdf: boolean = false) => {
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
@@ -165,28 +166,81 @@ export default function NuevoPresupuestoPage() {
       .update({ quotes_this_month: (profile?.quotes_this_month || 0) + 1 })
       .eq('id', session.user.id)
 
-    // 5. Si enviar por WhatsApp, abrir link
-    if (sendWhatsApp && clientPhone) {
-      const itemsList = items.map(it => `• ${it.name}: ${formatARS(it.quantity * it.unit_price)}`).join('\n')
-      const msg = [
-        `*Presupuesto #${quote.quote_number} — ${profile?.business_name}*`,
-        '',
-        title ? `Trabajo: ${title}` : '',
-        vehicleInfo ? `Vehículo: ${vehicleInfo}` : '',
-        '',
-        itemsList,
-        '',
-        discount > 0 ? `Descuento: ${discount}%` : '',
-        `*TOTAL: ${formatARS(total)}*`,
-        '',
-        notes ? `Notas: ${notes}` : '',
-        '',
-        `_Enviado con PresupuestoPRO_`,
-      ].filter(Boolean).join('\n')
+    // 5. Generate PDF if needed
+    if (sendWhatsApp || downloadPdf) {
+      try {
+        const pdf = await generateQuotePDF(
+          {
+            quoteNumber: quote.quote_number,
+            title,
+            vehicleInfo: vehicleInfo || undefined,
+            clientName,
+            clientPhone: clientPhone || undefined,
+            items: items.map(it => ({
+              name: it.name,
+              category: it.category,
+              quantity: it.quantity,
+              unit: it.unit,
+              unit_price: it.unit_price,
+            })),
+            subtotal,
+            discountPercent: discount,
+            discountAmount,
+            total,
+            notes,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            businessName: profile?.business_name || '',
+            ownerName: profile?.owner_name || '',
+            phone: profile?.phone || '',
+            address: profile?.address || '',
+            city: profile?.city || '',
+            trade: profile?.trade || '',
+            logoUrl: profile?.logo_url || null,
+          },
+          { watermark: profile?.plan === 'free' }
+        )
 
-      const phone = clientPhone.replace(/\D/g, '')
-      const whatsappUrl = `https://wa.me/${phone.startsWith('54') ? phone : '54' + phone}?text=${encodeURIComponent(msg)}`
-      window.open(whatsappUrl, '_blank')
+        const fileName = `Presupuesto-${quote.quote_number}-${clientName.replace(/\s+/g, '-')}.pdf`
+
+        if (downloadPdf) {
+          pdf.save(fileName)
+        }
+
+        if (sendWhatsApp && clientPhone) {
+          // Download PDF first
+          pdf.save(fileName)
+
+          // Then open WhatsApp with message
+          setTimeout(() => {
+            const itemsList = items.map(it => `• ${it.name}: ${formatARS(it.quantity * it.unit_price)}`).join('\n')
+            const msg = [
+              `*Presupuesto #${quote.quote_number} — ${profile?.business_name}*`,
+              '',
+              title ? `Trabajo: ${title}` : '',
+              vehicleInfo ? `Vehículo: ${vehicleInfo}` : '',
+              '',
+              itemsList,
+              '',
+              discount > 0 ? `Descuento: ${discount}%` : '',
+              `*TOTAL: ${formatARS(total)}*`,
+              '',
+              notes ? `Notas: ${notes}` : '',
+              '',
+              `📎 _Te adjunto el PDF con el detalle completo_`,
+              '',
+              `_Enviado con PresupuestoPRO_`,
+            ].filter(Boolean).join('\n')
+
+            const phone = clientPhone.replace(/\D/g, '')
+            const whatsappUrl = `https://wa.me/${phone.startsWith('54') ? phone : '54' + phone}?text=${encodeURIComponent(msg)}`
+            window.open(whatsappUrl, '_blank')
+          }, 500)
+        }
+      } catch (e) {
+        console.error('PDF generation error:', e)
+      }
     }
 
     router.push('/dashboard/presupuestos')
@@ -424,7 +478,14 @@ export default function NuevoPresupuestoPage() {
           disabled={!clientName || items.length === 0 || saving}
           className="btn-primary w-full flex items-center justify-center gap-2"
         >
-          {saving ? 'Guardando...' : '📲 Guardar y enviar por WhatsApp'}
+          {saving ? 'Generando PDF...' : '📲 Guardar, PDF + WhatsApp'}
+        </button>
+        <button
+          onClick={() => handleSave(false, true)}
+          disabled={!clientName || items.length === 0 || saving}
+          className="btn-whatsapp w-full flex items-center justify-center gap-2 !bg-gradient-to-r !from-slate-700 !to-slate-800 !shadow-none"
+        >
+          📄 Guardar y descargar PDF
         </button>
         <button
           onClick={() => handleSave(false)}
