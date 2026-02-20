@@ -282,7 +282,7 @@ export async function generateQuotePDF(
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(22, 101, 52)
-    doc.text('🔩  MATERIALES', margin + 4, y + 5)
+    doc.text('MATERIALES', margin + 4, y + 5)
     y += 9
 
     autoTable(doc, {
@@ -300,7 +300,7 @@ export async function generateQuotePDF(
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(29, 78, 216)
-    doc.text('🔧  MANO DE OBRA', margin + 4, y + 5)
+    doc.text('MANO DE OBRA', margin + 4, y + 5)
     y += 9
 
     autoTable(doc, {
