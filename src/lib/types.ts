@@ -10,6 +10,8 @@ export interface Profile {
   logo_url: string
   plan: 'free' | 'pro'
   quotes_this_month: number
+  next_quote_number: number
+  quote_number_offset: number
   created_at: string
 }
 
@@ -24,6 +26,11 @@ export interface Client {
   created_at: string
 }
 
+export interface ClientWithStats extends Client {
+  quote_count: number
+  total_amount: number
+}
+
 export interface SavedItem {
   id: string
   user_id: string
@@ -32,30 +39,6 @@ export interface SavedItem {
   default_price: number
   unit: string
   created_at: string
-}
-
-export interface Quote {
-  id: string
-  user_id: string
-  client_id: string | null
-  quote_number: number
-  title: string
-  status: QuoteStatus
-  subtotal: number
-  discount_percent: number
-  discount_amount: number
-  total: number
-  notes: string
-  valid_until: string | null
-  vehicle_info: string
-  sent_at: string | null
-  accepted_at: string | null
-  paid_at: string | null
-  created_at: string
-  updated_at: string
-  // Joined data
-  client?: Client
-  items?: QuoteItem[]
 }
 
 export interface QuoteItem {
@@ -68,6 +51,31 @@ export interface QuoteItem {
   unit_price: number
   total: number
   sort_order: number
+}
+
+export interface Quote {
+  id: string
+  user_id: string
+  client_id: string | null
+  quote_number: number
+  title: string
+  status: QuoteStatus
+  subtotal: number
+  discount_percent: number
+  discount_amount: number
+  iva_percent: number
+  iva_amount: number
+  total: number
+  notes: string
+  valid_until: string | null
+  vehicle_info: string
+  sent_at: string | null
+  accepted_at: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+  client?: Pick<Client, 'name' | 'phone'> | null
+  items?: QuoteItem[]
 }
 
 export interface Payment {
@@ -113,6 +121,12 @@ export const FREE_PLAN_LIMITS = {
   max_saved_items: 10,
   watermark: true,
 }
+
+export const IVA_OPTIONS = [
+  { value: 0, label: 'Sin IVA' },
+  { value: 10.5, label: 'IVA 10.5%' },
+  { value: 21, label: 'IVA 21%' },
+] as const
 
 export const formatARS = (n: number): string =>
   new Intl.NumberFormat('es-AR', {
