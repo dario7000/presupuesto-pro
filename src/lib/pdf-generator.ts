@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { formatARS } from './types'
+import { formatMoney } from './currencies'
+import { getTranslations, type Lang } from './i18n'
 
 interface PDFQuoteData {
   quoteNumber: number
@@ -105,8 +106,10 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
 export async function generateQuotePDF(
   quote: PDFQuoteData,
   business: PDFBusinessInfo,
-  options: { watermark?: boolean } = {}
+  options: { watermark?: boolean; currency?: string; lang?: Lang } = {}
 ): Promise<jsPDF> {
+  const fmt = (n: number) => formatMoney(n, options.currency || 'ARS')
+  const t = getTranslations(options.lang || 'es')
   const doc = new jsPDF('p', 'mm', 'a4')
   const pageWidth = doc.internal.pageSize.getWidth()
   const margin = 15
@@ -153,7 +156,7 @@ export async function generateQuotePDF(
   doc.setFontSize(8)
   doc.setTextColor(...gray)
   const dateStr = new Date(quote.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
-  doc.text(`Fecha: ${dateStr}`, margin + 6, y + 16)
+  doc.text(`${t.pdf_date}: ${dateStr}`, margin + 6, y + 16)
 
   if (quote.validUntil) {
     doc.text(`Válido hasta: ${new Date(quote.validUntil).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}`, pageWidth - margin - 6, y + 16, { align: 'right' })
@@ -188,7 +191,7 @@ export async function generateQuotePDF(
   }
   if (quote.vehicleInfo) {
     doc.setFontSize(8); doc.setTextColor(...gray)
-    doc.text(`Vehículo: ${quote.vehicleInfo}`, pageWidth - margin - 6, y + 20, { align: 'right' })
+    doc.text(`${t.pdf_vehicle}: ${quote.vehicleInfo}`, pageWidth - margin - 6, y + 20, { align: 'right' })
   }
 
   y += clientBoxH + 7
@@ -198,7 +201,7 @@ export async function generateQuotePDF(
   const labor = quote.items.filter(i => i.category === 'mano_de_obra')
 
   const buildTableRows = (items: typeof quote.items) =>
-    items.map(it => [it.name, `${it.quantity} ${it.unit}`, formatARS(it.unit_price), formatARS(it.quantity * it.unit_price)])
+    items.map(it => [it.name, `${it.quantity} ${it.unit}`, fmt(it.unit_price), fmt(it.quantity * it.unit_price)])
 
   const tableStyles = {
     headStyles: { fillColor: dark as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontSize: 8, fontStyle: 'bold' as const, cellPadding: 4 },
@@ -214,7 +217,7 @@ export async function generateQuotePDF(
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(22, 101, 52)
     doc.text('MATERIALES', margin + 4, y + 5)
     y += 9
-    autoTable(doc, { startY: y, head: [['Descripción', 'Cant.', 'Precio Unit.', 'Subtotal']], body: buildTableRows(materials), ...tableStyles })
+    autoTable(doc, { startY: y, head: [[t.pdf_item, t.pdf_qty, t.pdf_unit_price, t.pdf_subtotal]], body: buildTableRows(materials), ...tableStyles })
     y = (doc as any).lastAutoTable.finalY + 4
   }
 
@@ -224,13 +227,13 @@ export async function generateQuotePDF(
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(29, 78, 216)
     doc.text('MANO DE OBRA', margin + 4, y + 5)
     y += 9
-    autoTable(doc, { startY: y, head: [['Descripción', 'Cant.', 'Precio Unit.', 'Subtotal']], body: buildTableRows(labor), ...tableStyles })
+    autoTable(doc, { startY: y, head: [[t.pdf_item, t.pdf_qty, t.pdf_unit_price, t.pdf_subtotal]], body: buildTableRows(labor), ...tableStyles })
     y = (doc as any).lastAutoTable.finalY + 4
   }
 
   const others = quote.items.filter(i => i.category !== 'material' && i.category !== 'mano_de_obra')
   if (others.length > 0) {
-    autoTable(doc, { startY: y, head: [['Descripción', 'Cant.', 'Precio Unit.', 'Subtotal']], body: buildTableRows(others), ...tableStyles })
+    autoTable(doc, { startY: y, head: [[t.pdf_item, t.pdf_qty, t.pdf_unit_price, t.pdf_subtotal]], body: buildTableRows(others), ...tableStyles })
     y = (doc as any).lastAutoTable.finalY + 4
   }
 
@@ -248,29 +251,29 @@ export async function generateQuotePDF(
 
   if (hasDiscount || hasIva) {
     doc.setTextColor(148, 163, 184)
-    doc.text('Subtotal:', pageWidth - margin - 79, ty)
-    doc.text(formatARS(quote.subtotal), pageWidth - margin - 6, ty, { align: 'right' })
+    doc.text(t.pdf_subtotal + ':', pageWidth - margin - 79, ty)
+    doc.text(fmt(quote.subtotal), pageWidth - margin - 6, ty, { align: 'right' })
     ty += 6
   }
 
   if (hasDiscount) {
     doc.setTextColor(239, 68, 68)
-    doc.text(`Descuento (${quote.discountPercent}%):`, pageWidth - margin - 79, ty)
-    doc.text(`-${formatARS(quote.discountAmount)}`, pageWidth - margin - 6, ty, { align: 'right' })
+    doc.text(`${t.pdf_discount} (${quote.discountPercent}%):`, pageWidth - margin - 79, ty)
+    doc.text(`-${fmt(quote.discountAmount)}`, pageWidth - margin - 6, ty, { align: 'right' })
     ty += 6
   }
 
   if (hasIva) {
     doc.setTextColor(34, 197, 94)
     doc.text(`IVA (${quote.ivaPercent}%):`, pageWidth - margin - 79, ty)
-    doc.text(`+${formatARS(quote.ivaAmount)}`, pageWidth - margin - 6, ty, { align: 'right' })
+    doc.text(`+${fmt(quote.ivaAmount)}`, pageWidth - margin - 6, ty, { align: 'right' })
     ty += 6
   }
 
   ty += 2
   doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...amber)
-  doc.text('TOTAL:', pageWidth - margin - 79, ty)
-  doc.text(formatARS(quote.total), pageWidth - margin - 6, ty, { align: 'right' })
+  doc.text(t.pdf_grand_total + ':', pageWidth - margin - 79, ty)
+  doc.text(fmt(quote.total), pageWidth - margin - 6, ty, { align: 'right' })
 
   y += totalsHeight + 20
 
@@ -304,8 +307,8 @@ export async function generateQuotePDF(
     doc.setDrawColor(226, 232, 240)
     doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(148, 163, 184)
-    doc.text('Creado con PresupuestoPRO — presupuestopro.vercel.app', margin, pageHeight - 10)
-    doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' })
+    doc.text(t.pdf_watermark + ' — presupuestopro.vercel.app', margin, pageHeight - 10)
+    doc.text(`${t.pdf_page} ${i} ${t.pdf_of} ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' })
   }
 
   return doc

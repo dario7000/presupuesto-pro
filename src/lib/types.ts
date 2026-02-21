@@ -12,6 +12,8 @@ export interface Profile {
   quotes_this_month: number
   next_quote_number: number
   quote_number_offset: number
+  currency: string
+  language: string
   created_at: string
 }
 

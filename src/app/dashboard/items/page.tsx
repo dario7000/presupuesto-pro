@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { formatARS } from '@/lib/types'
+import { useProfile } from '@/contexts/ProfileContext'
 import type { SavedItem } from '@/lib/types'
 
 export default function ItemsPage() {
+  const { formatMoney, t } = useProfile()
   const [items, setItems] = useState<SavedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
@@ -219,6 +220,7 @@ function ItemRow({ item, onEdit, onDelete }: {
   onEdit: (item: SavedItem) => void
   onDelete: (id: string) => void
 }) {
+  const { formatMoney } = useProfile()
   return (
     <div className="bg-white rounded-xl p-3 border border-gray-100 flex justify-between items-center">
       <div className="flex-1">
@@ -233,7 +235,7 @@ function ItemRow({ item, onEdit, onDelete }: {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-sm">{formatARS(Number(item.default_price))}</span>
+        <span className="font-semibold text-sm">{formatMoney(Number(item.default_price))}</span>
         <button onClick={() => onEdit(item)} className="text-gray-300 hover:text-amber-500 text-xs">✏️</button>
         <button onClick={() => onDelete(item.id)} className="text-gray-300 hover:text-red-400 text-xs">✕</button>
       </div>

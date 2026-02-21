@@ -2,107 +2,99 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useProfile } from '@/contexts/ProfileContext'
 import { SearchInput } from '@/components/SearchInput'
 import { EmptyState } from '@/components/EmptyState'
-import { CardSkeleton } from '@/components/LoadingSkeleton'
-import { formatARS } from '@/lib/types'
-import type { ClientWithStats } from '@/lib/types'
+import type { Client } from '@/lib/types'
+
+interface ClientWithStats extends Client { quote_count: number; total_amount: number }
 
 export default function ClientesPage() {
+  const { t, formatMoney } = useProfile()
   const [clients, setClients] = useState<ClientWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [editingClient, setEditingClient] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
-  const [editPhone, setEditPhone] = useState('')
-  const [editEmail, setEditEmail] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', phone: '', email: '' })
 
-  useEffect(() => { loadClients() }, [])
-
-  const loadClients = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    const [{ data: clientsData }, { data: quotes }] = await Promise.all([
-      supabase.from('clients').select('*').eq('user_id', session.user.id).order('name'),
-      supabase.from('quotes').select('client_id, total').eq('user_id', session.user.id),
-    ])
-    if (clientsData) {
-      const clientStats = clientsData.map((client: any) => {
-        const cq = (quotes || []).filter((q: any) => q.client_id === client.id)
-        return { ...client, quote_count: cq.length, total_amount: cq.reduce((s: number, q: any) => s + Number(q.total), 0) }
+  useEffect(() => {
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const { data: clientsData } = await supabase.from('clients').select('*').eq('user_id', session.user.id).order('name')
+      const { data: quotesData } = await supabase.from('quotes').select('client_id, total').eq('user_id', session.user.id)
+      const statsMap: Record<string, { count: number; amount: number }> = {}
+      quotesData?.forEach(q => {
+        if (!q.client_id) return
+        if (!statsMap[q.client_id]) statsMap[q.client_id] = { count: 0, amount: 0 }
+        statsMap[q.client_id].count++
+        statsMap[q.client_id].amount += Number(q.total)
       })
-      setClients(clientStats)
+      setClients((clientsData || []).map(c => ({
+        ...c, quote_count: statsMap[c.id]?.count || 0, total_amount: statsMap[c.id]?.amount || 0,
+      })) as ClientWithStats[])
+      setLoading(false)
     }
-    setLoading(false)
-  }
+    load()
+  }, [])
 
-  const startEdit = (c: ClientWithStats) => { setEditingClient(c.id); setEditName(c.name); setEditPhone(c.phone || ''); setEditEmail(c.email || '') }
+  const filtered = search
+    ? clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.phone?.includes(search) || c.email?.toLowerCase().includes(search.toLowerCase()))
+    : clients
+
+  const startEdit = (c: ClientWithStats) => { setEditingId(c.id); setEditForm({ name: c.name, phone: c.phone, email: c.email }) }
   const saveEdit = async () => {
-    if (!editingClient) return
-    await supabase.from('clients').update({ name: editName, phone: editPhone, email: editEmail }).eq('id', editingClient)
-    setEditingClient(null); loadClients()
+    if (!editingId) return
+    await supabase.from('clients').update(editForm).eq('id', editingId)
+    setClients(clients.map(c => c.id === editingId ? { ...c, ...editForm } : c))
+    setEditingId(null)
   }
   const deleteClient = async (id: string) => {
-    if (!confirm('Eliminar este cliente? Los presupuestos no se eliminan.')) return
     await supabase.from('clients').delete().eq('id', id)
     setClients(clients.filter(c => c.id !== id))
   }
 
-  const filtered = clients.filter(c => {
-    if (!search) return true
-    const s = search.toLowerCase()
-    return c.name.toLowerCase().includes(s) || (c.phone || '').includes(s) || (c.email || '').toLowerCase().includes(s)
-  })
-
-  if (loading) return <div className="p-4"><CardSkeleton count={4} /></div>
+  if (loading) return <div className="flex items-center justify-center py-20"><p className="text-gray-400 text-sm">{t.loading}</p></div>
 
   return (
-    <div className="p-4 space-y-3 animate-fade-in">
-      <div>
-        <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)' }}>Clientes</h2>
-        <p className="text-xs text-gray-500">Se guardan automaticamente al crear presupuestos</p>
-      </div>
-      {clients.length > 3 && <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nombre, telefono..." />}
+    <div className="p-4 space-y-4 animate-fade-in">
+      <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{t.clients_title}</h2>
+      {clients.length >= 3 && <SearchInput value={search} onChange={setSearch} placeholder={t.clients_search} />}
       {filtered.length === 0 ? (
-        <EmptyState icon="people" title={search ? `Sin resultados para "${search}"` : 'Todavia no tenes clientes'}
-          subtitle={search ? undefined : 'Se crean automaticamente cuando haces un presupuesto'} />
+        <EmptyState icon="👥" title={t.clients_empty} subtitle={t.clients_empty_sub} />
       ) : (
-        filtered.map(c => (
-          <div key={c.id} className="bg-white rounded-xl p-4 border border-gray-100">
-            {editingClient === c.id ? (
-              <div className="space-y-2">
-                <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm" placeholder="Nombre" />
-                <input value={editPhone} onChange={e => setEditPhone(e.target.value)} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm" placeholder="Telefono" />
-                <input value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm" placeholder="Email" />
-                <div className="flex gap-2">
-                  <button onClick={saveEdit} className="flex-1 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg">Guardar</button>
-                  <button onClick={() => setEditingClient(null)} className="flex-1 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-lg">Cancelar</button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="font-semibold text-sm">{c.name}</div>
-                  {c.phone && (
-                    <a href={`https://wa.me/${c.phone.replace(/\D/g, '').startsWith('54') ? c.phone.replace(/\D/g, '') : '54' + c.phone.replace(/\D/g, '')}`}
-                      target="_blank" rel="noopener" className="text-xs text-green-600 hover:underline">{c.phone}</a>
-                  )}
-                  {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
-                </div>
-                <div className="text-right flex items-center gap-3">
-                  <div>
-                    <div className="text-xs text-gray-500">{c.quote_count} presup.</div>
-                    <div className="font-bold text-sm text-amber-600">{formatARS(c.total_amount)}</div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => startEdit(c)} className="text-gray-300 hover:text-amber-500 text-xs">Edit</button>
-                    <button onClick={() => deleteClient(c.id)} className="text-gray-300 hover:text-red-400 text-xs">X</button>
+        <div className="space-y-2">
+          {filtered.map(c => (
+            <div key={c.id} className="bg-white rounded-xl p-4 border border-gray-100">
+              {editingId === c.id ? (
+                <div className="space-y-2">
+                  <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} placeholder={t.clients_name} className="input-field" />
+                  <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} placeholder={t.clients_phone} className="input-field" />
+                  <input value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} placeholder={t.clients_email} className="input-field" />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="flex-1 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold">{t.clients_save}</button>
+                    <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs">{t.quotes_cancel}</button>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{c.name}</p>
+                    {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                    <p className="text-[10px] text-gray-400">{c.quote_count} {t.clients_quotes}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-sm text-amber-600">{formatMoney(c.total_amount)}</div>
+                    <div className="flex gap-1 mt-1">
+                      <button onClick={() => startEdit(c)} className="text-[10px] text-gray-400 hover:text-amber-600">{t.clients_edit}</button>
+                      {c.quote_count === 0 && <button onClick={() => deleteClient(c.id)} className="text-[10px] text-gray-400 hover:text-red-500">{t.clients_delete}</button>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

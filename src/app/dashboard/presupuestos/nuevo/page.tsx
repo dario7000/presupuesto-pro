@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/contexts/ProfileContext'
-import { formatARS, IVA_OPTIONS } from '@/lib/types'
+import { IVA_OPTIONS } from '@/lib/types'
 import { generateQuotePDF } from '@/lib/pdf-generator'
 import type { Client, SavedItem } from '@/lib/types'
 
@@ -17,7 +17,7 @@ export default function NuevoPresupuestoPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get('edit')
-  const { profile, reload: reloadProfile } = useProfile()
+  const { profile, reload: reloadProfile, t, formatMoney, lang } = useProfile()
 
   const [clients, setClients] = useState<Client[]>([])
   const [savedItems, setSavedItems] = useState<SavedItem[]>([])
@@ -30,7 +30,7 @@ export default function NuevoPresupuestoPage() {
   const [title, setTitle] = useState('')
   const [vehicleInfo, setVehicleInfo] = useState('')
   const [items, setItems] = useState<QuoteItemForm[]>([])
-  const [notes, setNotes] = useState('Presupuesto valido por 7 dias.')
+  const [notes, setNotes] = useState(t.new_notes_placeholder.split('.')[0] + '.')
   const [discount, setDiscount] = useState(0)
   const [ivaPercent, setIvaPercent] = useState(0)
   const [showSaved, setShowSaved] = useState(false)
@@ -147,6 +147,7 @@ export default function NuevoPresupuestoPage() {
 
     if (sendWhatsApp || downloadPdf) {
       try {
+        const cur = profile?.currency || 'ARS'
         const pdf = await generateQuotePDF({
           quoteNumber: customQuoteNumber ? Number(customQuoteNumber) : quote.quote_number,
           title, vehicleInfo: vehicleInfo || undefined, clientName, clientPhone: clientPhone || undefined,
@@ -156,18 +157,18 @@ export default function NuevoPresupuestoPage() {
           businessName: profile?.business_name || '', ownerName: profile?.owner_name || '',
           phone: profile?.phone || '', address: profile?.address || '', city: profile?.city || '',
           trade: profile?.trade || '', logoUrl: profile?.logo_url || null,
-        }, { watermark: profile?.plan === 'free' })
+        }, { watermark: profile?.plan === 'free', currency: cur, lang })
 
-        const fileName = `Presupuesto-${customQuoteNumber || quote.quote_number}-${clientName.replace(/\s+/g, '-')}.pdf`
+        const fileName = `${t.pdf_quote}-${customQuoteNumber || quote.quote_number}-${clientName.replace(/\s+/g, '-')}.pdf`
         if (downloadPdf) pdf.save(fileName)
         if (sendWhatsApp && clientPhone) {
           pdf.save(fileName)
           setTimeout(() => {
-            const itemsList = items.map(it => `- ${it.name}: ${formatARS(it.quantity * it.unit_price)}`).join('\n')
-            const msg = [`*Presupuesto #${customQuoteNumber || quote.quote_number} - ${profile?.business_name}*`, '',
-              title ? `Trabajo: ${title}` : '', vehicleInfo ? `Vehiculo: ${vehicleInfo}` : '', '', itemsList, '',
-              discount > 0 ? `Descuento: ${discount}%` : '', ivaPercent > 0 ? `IVA (${ivaPercent}%): ${formatARS(ivaAmount)}` : '',
-              `*TOTAL: ${formatARS(total)}*`, '', notes ? `Notas: ${notes}` : '', '', '_Enviado con PresupuestoPRO_'
+            const itemsList = items.map(it => `- ${it.name}: ${formatMoney(it.quantity * it.unit_price)}`).join('\n')
+            const msg = [`*${t.pdf_quote} #${customQuoteNumber || quote.quote_number} - ${profile?.business_name}*`, '',
+              title ? `${t.new_wa_work}: ${title}` : '', vehicleInfo ? `${t.new_wa_vehicle}: ${vehicleInfo}` : '', '', itemsList, '',
+              discount > 0 ? `${t.new_discount}: ${discount}%` : '', ivaPercent > 0 ? `${t.new_iva} (${ivaPercent}%): ${formatMoney(ivaAmount)}` : '',
+              `*${t.new_total}: ${formatMoney(total)}*`, '', notes ? `${t.new_wa_notes}: ${notes}` : '', '', `_${t.new_wa_sent_with}_`
             ].filter(Boolean).join('\n')
             const phone = clientPhone.replace(/\D/g, '')
             window.open(`https://wa.me/${phone.startsWith('54') ? phone : '54' + phone}?text=${encodeURIComponent(msg)}`, '_blank')
@@ -180,32 +181,32 @@ export default function NuevoPresupuestoPage() {
     router.push('/dashboard/presupuestos')
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20"><p className="text-gray-400 text-sm">Cargando...</p></div>
+  if (loading) return <div className="flex items-center justify-center py-20"><p className="text-gray-400 text-sm">{t.loading}</p></div>
 
-  const isMechanic = profile?.trade === 'Mecanico' || profile?.trade === 'Service'
+  const isMechanic = profile?.trade === 'Mecanico' || profile?.trade === 'Mecánico' || profile?.trade === 'Service'
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
       <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)' }}>
-        {editId ? 'Editar presupuesto' : 'Nuevo presupuesto'}
+        {editId ? t.new_edit_title : t.new_title}
       </h2>
 
       {/* Custom Quote Number */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm text-gray-700"># Numero de presupuesto</h3>
+          <h3 className="font-semibold text-sm text-gray-700">{t.new_quote_number}</h3>
           {!editId && <button onClick={() => setShowQuoteNumberField(!showQuoteNumberField)} className="text-xs text-amber-600 font-medium">
-            {showQuoteNumberField ? 'Usar automatico' : 'Personalizar'}</button>}
+            {showQuoteNumberField ? t.new_auto : t.new_customize}</button>}
         </div>
         {(showQuoteNumberField || editId) ? (
           <div className="space-y-1.5">
             <input type="number" value={customQuoteNumber} onChange={(e) => setCustomQuoteNumber(e.target.value ? Number(e.target.value) : '')}
-              placeholder="Ej: 150" className="input-field" min="1" disabled={!!editId} />
-            <p className="text-[10px] text-gray-400">{editId ? 'No se puede cambiar el numero de un presupuesto existente' : 'Ideal si ya venias numerando presupuestos antes de usar la app'}</p>
+              placeholder={t.new_custom_placeholder} className="input-field" min="1" disabled={!!editId} />
+            <p className="text-[10px] text-gray-400">{editId ? t.new_cant_change : t.new_custom_hint}</p>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">Sera el #{customQuoteNumber || 'automatico'}
-            <span className="text-[10px] text-gray-400 block mt-0.5">Toca "Personalizar" para elegir otro numero</span>
+          <p className="text-sm text-gray-500">{t.new_will_be} #{customQuoteNumber || t.new_auto_label}
+            <span className="text-[10px] text-gray-400 block mt-0.5">{t.new_customize_hint}</span>
           </p>
         )}
       </div>
@@ -213,9 +214,9 @@ export default function NuevoPresupuestoPage() {
       {/* Client */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm text-gray-700">Cliente</h3>
+          <h3 className="font-semibold text-sm text-gray-700">{t.new_client}</h3>
           {clients.length > 0 && <button onClick={() => setShowClientList(!showClientList)} className="text-xs text-amber-600 font-medium">
-            {showClientList ? 'Cerrar' : 'Clientes guardados'}</button>}
+            {showClientList ? t.new_close : t.new_saved_clients}</button>}
         </div>
         {showClientList && (
           <div className="bg-gray-50 rounded-lg p-2 space-y-1 max-h-40 overflow-y-auto border border-gray-200">
@@ -227,96 +228,96 @@ export default function NuevoPresupuestoPage() {
             ))}
           </div>
         )}
-        <input value={clientName} onChange={(e) => { setClientName(e.target.value); setSelectedClientId(null) }} placeholder="Nombre del cliente" className="input-field" />
-        <input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="WhatsApp (ej: 11 2345-6789)" className="input-field" />
+        <input value={clientName} onChange={(e) => { setClientName(e.target.value); setSelectedClientId(null) }} placeholder={t.new_client_name} className="input-field" />
+        <input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder={t.new_client_phone} className="input-field" />
       </div>
 
       {/* Details */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
-        <h3 className="font-semibold text-sm text-gray-700">Detalle</h3>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isMechanic ? 'Ej: Service completo 30.000km' : 'Ej: Instalacion electrica cocina'} className="input-field" />
-        {isMechanic && <input value={vehicleInfo} onChange={(e) => setVehicleInfo(e.target.value)} placeholder="Vehiculo (ej: Ford Mondeo 2008 - ABC123)" className="input-field" />}
+        <h3 className="font-semibold text-sm text-gray-700">{t.new_detail}</h3>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isMechanic ? t.new_detail_mechanic : t.new_detail_placeholder} className="input-field" />
+        {isMechanic && <input value={vehicleInfo} onChange={(e) => setVehicleInfo(e.target.value)} placeholder={t.new_vehicle} className="input-field" />}
       </div>
 
       {/* Items */}
       <div className="bg-white rounded-xl p-4 border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm text-gray-700">Items</h3>
+          <h3 className="font-semibold text-sm text-gray-700">{t.new_items}</h3>
           {savedItems.length > 0 && <button onClick={() => setShowSaved(!showSaved)} className="text-xs text-amber-600 font-medium">
-            {showSaved ? 'Cerrar' : 'Items guardados'}</button>}
+            {showSaved ? t.new_close : t.new_saved_items}</button>}
         </div>
         {showSaved && (
           <div className="bg-amber-50 rounded-lg p-3 space-y-1.5 border border-amber-100 max-h-48 overflow-y-auto">
-            <p className="text-xs text-amber-700 font-medium mb-1">Toca para agregar:</p>
+            <p className="text-xs text-amber-700 font-medium mb-1">{t.new_tap_to_add}</p>
             {savedItems.map(si => (
               <button key={si.id} onClick={() => addSavedItem(si)}
                 className="w-full text-left px-3 py-2 bg-white rounded-lg text-xs flex justify-between items-center hover:bg-amber-50 border border-amber-100">
                 <div><span className={`px-1.5 py-0.5 rounded mr-1.5 text-[10px] ${si.category === 'mano_de_obra' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>{si.category === 'mano_de_obra' ? 'MO' : 'MAT'}</span>{si.name}</div>
-                <span className="font-semibold text-amber-700">{formatARS(Number(si.default_price))}</span>
+                <span className="font-semibold text-amber-700">{formatMoney(Number(si.default_price))}</span>
               </button>
             ))}
           </div>
         )}
         {items.map((it) => (
           <div key={it.tempId} className="bg-gray-50 rounded-lg p-3 space-y-2 relative">
-            <button onClick={() => removeItem(it.tempId)} className="absolute top-2 right-2 text-gray-300 hover:text-red-400 text-sm">X</button>
+            <button onClick={() => removeItem(it.tempId)} className="absolute top-2 right-2 text-gray-300 hover:text-red-400 text-sm">✕</button>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-block ${it.category === 'mano_de_obra' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-              {it.category === 'mano_de_obra' ? 'Mano de obra' : 'Material'}</span>
-            <input value={it.name} onChange={(e) => updateItem(it.tempId, 'name', e.target.value)} placeholder="Descripcion del item"
+              {it.category === 'mano_de_obra' ? t.new_labor : t.new_material}</span>
+            <input value={it.name} onChange={(e) => updateItem(it.tempId, 'name', e.target.value)} placeholder={t.new_item_desc}
               className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-sm focus:outline-none focus:border-amber-400" />
             <div className="flex gap-2">
-              <div className="flex-1"><label className="text-[10px] text-gray-400">Cantidad</label>
+              <div className="flex-1"><label className="text-[10px] text-gray-400">{t.new_quantity}</label>
                 <input type="number" value={it.quantity} onChange={(e) => updateItem(it.tempId, 'quantity', Number(e.target.value))}
                   className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-sm focus:outline-none focus:border-amber-400" min="0.5" step="0.5" /></div>
-              <div className="flex-1"><label className="text-[10px] text-gray-400">Precio unit.</label>
+              <div className="flex-1"><label className="text-[10px] text-gray-400">{t.new_unit_price}</label>
                 <input type="number" value={it.unit_price} onChange={(e) => updateItem(it.tempId, 'unit_price', Number(e.target.value))}
                   className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-sm focus:outline-none focus:border-amber-400" min="0" /></div>
-              <div className="w-24"><label className="text-[10px] text-gray-400">Subtotal</label>
-                <div className="px-2 py-1.5 text-sm font-semibold text-gray-700">{formatARS(it.quantity * it.unit_price)}</div></div>
+              <div className="w-24"><label className="text-[10px] text-gray-400">{t.new_subtotal}</label>
+                <div className="px-2 py-1.5 text-sm font-semibold text-gray-700">{formatMoney(it.quantity * it.unit_price)}</div></div>
             </div>
           </div>
         ))}
         <div className="flex gap-2">
-          <button onClick={() => addBlankItem('material')} className="flex-1 py-2.5 border-2 border-dashed border-green-200 rounded-lg text-xs text-green-600 font-medium hover:bg-green-50">+ Material</button>
-          <button onClick={() => addBlankItem('mano_de_obra')} className="flex-1 py-2.5 border-2 border-dashed border-blue-200 rounded-lg text-xs text-blue-600 font-medium hover:bg-blue-50">+ Mano de obra</button>
+          <button onClick={() => addBlankItem('material')} className="flex-1 py-2.5 border-2 border-dashed border-green-200 rounded-lg text-xs text-green-600 font-medium hover:bg-green-50">{t.new_add_material}</button>
+          <button onClick={() => addBlankItem('mano_de_obra')} className="flex-1 py-2.5 border-2 border-dashed border-blue-200 rounded-lg text-xs text-blue-600 font-medium hover:bg-blue-50">{t.new_add_labor}</button>
         </div>
       </div>
 
       {/* Totals */}
       {items.length > 0 && (
         <div className="bg-gray-900 rounded-xl p-4 text-white space-y-2">
-          <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span>{formatARS(subtotal)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-400">{t.new_subtotal}</span><span>{formatMoney(subtotal)}</span></div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">Descuento</span>
+            <span className="text-gray-400">{t.new_discount}</span>
             <div className="flex items-center gap-1">
               <input type="number" value={discount} onChange={(e) => setDiscount(Number(e.target.value))}
                 className="w-14 px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-center text-xs text-white" min="0" max="100" />
               <span className="text-xs text-gray-500">%</span>
-              {discount > 0 && <span className="text-red-400 text-xs ml-1">-{formatARS(discountAmount)}</span>}
+              {discount > 0 && <span className="text-red-400 text-xs ml-1">-{formatMoney(discountAmount)}</span>}
             </div>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">IVA</span>
+            <span className="text-gray-400">{t.new_iva}</span>
             <div className="flex items-center gap-1">
               <select value={ivaPercent} onChange={(e) => setIvaPercent(Number(e.target.value))}
                 className="px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-xs text-white">
                 {IVA_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
-              {ivaPercent > 0 && <span className="text-green-400 text-xs ml-1">+{formatARS(ivaAmount)}</span>}
+              {ivaPercent > 0 && <span className="text-green-400 text-xs ml-1">+{formatMoney(ivaAmount)}</span>}
             </div>
           </div>
           <div className="border-t border-gray-700 pt-2 flex justify-between items-center">
-            <span className="font-bold">TOTAL</span>
-            <span className="font-bold text-amber-400 text-xl">{formatARS(total)}</span>
+            <span className="font-bold">{t.new_total}</span>
+            <span className="font-bold text-amber-400 text-xl">{formatMoney(total)}</span>
           </div>
         </div>
       )}
 
       {/* Notes */}
       <div className="bg-white rounded-xl p-4 border border-gray-100">
-        <h3 className="font-semibold text-sm text-gray-700 mb-2">Notas / Condiciones</h3>
+        <h3 className="font-semibold text-sm text-gray-700 mb-2">{t.new_notes}</h3>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder="Ej: Presupuesto valido por 7 dias. Garantia 30 dias sobre mano de obra."
+          placeholder={t.new_notes_placeholder}
           rows={3} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-amber-500 resize-none" />
       </div>
 
@@ -324,13 +325,13 @@ export default function NuevoPresupuestoPage() {
       <div className="space-y-2 pb-6">
         <button onClick={() => handleSave(true)} disabled={!clientName || items.length === 0 || saving}
           className="btn-primary w-full flex items-center justify-center gap-2">
-          {saving ? 'Generando PDF...' : 'Guardar, PDF + WhatsApp'}</button>
+          {saving ? t.new_generating : t.new_save_wa}</button>
         <button onClick={() => handleSave(false, true)} disabled={!clientName || items.length === 0 || saving}
           className="btn-whatsapp w-full flex items-center justify-center gap-2 !bg-gradient-to-r !from-slate-700 !to-slate-800 !shadow-none">
-          Guardar y descargar PDF</button>
+          {t.new_save_pdf}</button>
         <button onClick={() => handleSave(false)} disabled={items.length === 0 || saving}
           className="w-full py-3 bg-white border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 disabled:opacity-40">
-          {editId ? 'Guardar cambios' : 'Guardar como borrador'}</button>
+          {editId ? t.new_save_changes : t.new_save_draft}</button>
       </div>
     </div>
   )
