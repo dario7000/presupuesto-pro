@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/contexts/ProfileContext'
@@ -13,7 +13,7 @@ interface QuoteItemForm {
   quantity: number; unit: string; unit_price: number
 }
 
-export default function NuevoPresupuestoPage() {
+function NuevoPresupuestoInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get('edit')
@@ -334,5 +334,13 @@ export default function NuevoPresupuestoPage() {
           {editId ? t.new_save_changes : t.new_save_draft}</button>
       </div>
     </div>
+  )
+}
+
+export default function NuevoPresupuestoPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><p className="text-gray-400 text-sm">Cargando...</p></div>}>
+      <NuevoPresupuestoInner />
+    </Suspense>
   )
 }
